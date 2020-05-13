@@ -8,6 +8,7 @@ import os
 from datetime import timedelta
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 
 def utci_raw(Ta, va, D_Tmrt, ehPa):
@@ -365,7 +366,7 @@ while i < len(liste) - 1:
 UTCI_dataframe = pd.DataFrame(Point_value, columns=Header_values)
 
 # Write values
-outfile = open(dict_path['Palviset'] + '/Palviset_UTCI.csv', 'w')
+outfile = open(dict_path_oasis['Palviset'] + '/Palviset_UTCI.csv', 'w')
 UTCI_dataframe.to_csv(outfile, sep=';', index=False)
 outfile.close()
 print("valeurs Consignées")
