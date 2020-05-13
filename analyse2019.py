@@ -7,7 +7,7 @@ Created on Mon Feb  3 17:18:36 2020
 import os
 from datetime import timedelta
 import numpy as np
-import pandas as pd
+from pandas import datetime, read_csv, to_datetime, concat, DataFrame
 import matplotlib.pyplot as plt
 
 
@@ -178,7 +178,7 @@ def dateparse(x):
     """dateparse function
     applies the crrect format to imported data
     """
-    return pd.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')
+    return datetime.strptime(x, '%Y-%m-%d %H:%M:%S')
 
 
 # Mean radiant temperature calculation
@@ -263,15 +263,15 @@ Lecoles = list(dict_path_oasis.keys())
 "THe public space station is used as the reference station for calculation"
 
 liste = os.listdir(dict_path_oasis['Palviset'])
-data_fixe = pd.read_csv(dict_path_oasis['Palviset'] + "\\PalvisetEP.txt",
-                        usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8],
-                        sep=";", date_parser=dateparse, skiprows=4,
-                        names=['DateTime', 'TensAlim', 'Tair4m', 'RH', 'T_air', 'NetRad', 'Tg', 'va', 'DirV'])
+data_fixe = read_csv(dict_path_oasis['Palviset'] + "\\PalvisetEP.txt",
+                     usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8],
+                     sep=";", date_parser=dateparse, skiprows=4,
+                     names=['DateTime', 'TensAlim', 'Tair4m', 'RH', 'T_air', 'NetRad', 'Tg', 'va', 'DirV'])
 
 # DATETIME FOR UPSAMPLING
 # first make sure the date format is datetime
 if type(data_fixe.DateTime[0]):
-    data_fixe['Datetime'] = pd.to_datetime(data_fixe.DateTime, yearfirst=True)
+    data_fixe['Datetime'] = to_datetime(data_fixe.DateTime, yearfirst=True)
 else:
     pass
 # set datetime index for upsampling
@@ -310,21 +310,21 @@ Header_values = ["ecole", str(i + 1), "Tairsync", "Tair", "RHsync", "RH",
 Mobile_sync_table = []
 Point_value = []
 while i < len(liste) - 1:
-    data_point = pd.read_csv(dict_path_oasis['Palviset'] + '//' + liste[i], sep=";",
-                             usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-                             header=None, skiprows=1, date_parser=dateparse)
+    data_point = read_csv(dict_path_oasis['Palviset'] + '//' + liste[i], sep=";",
+                          usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                          header=None, skiprows=1, date_parser=dateparse)
     # data_point = data_m.dropna()  # remove no data
     data_point.columns = ["DateTime", "Tnw", "Tg", "T_air", "P", "RH", "Vent", "Tm,r ", "WBGT", "WCI"]
 
     # Synchronise start of measurements for mobile and fixed spots
-    data_point['DateTime'] = pd.to_datetime(data_point['DateTime'])
+    data_point['DateTime'] = to_datetime(data_point['DateTime'])
     data_point['NewDateTime'] = data_point['DateTime'] + timedelta(seconds=-data_point['DateTime'][0].second)
     data_sync = data_point.drop(['Tnw', 'WBGT', 'WCI'], axis=1)
     Data_sync = data_point.set_index('NewDateTime')  # set datetime as index
 
     # Place the Fixed and  mobile DataFrames side by side
     # Sync_Table: table for synchronizing measurements
-    TabCor = pd.concat([Correction, Data_sync], axis=1, join='inner')
+    TabCor = concat([Correction, Data_sync], axis=1, join='inner')
     # TabCor.dropna()
     # Create a synchronised mobile measurements dataframe
     "here we substract the Delta_temp and delta RH to values : we synchronize all the points with the start point measurement"
@@ -363,7 +363,7 @@ while i < len(liste) - 1:
 
 # %% Add to dataframe lines related to points
 
-UTCI_dataframe = pd.DataFrame(Point_value, columns=Header_values)
+UTCI_dataframe = DataFrame(Point_value, columns=Header_values)
 
 # Write values
 outfile = open(dict_path_oasis['Palviset'] + '/Palviset_UTCI.csv', 'w')
@@ -374,10 +374,9 @@ print("valeurs Consignées")
 """Graphe pour visualiser la station fixe, les mesures mobiles et les mesures mobiles corrigées"""
 
 # %% MULTIPLE PLOTS SAME FIGURE: Reference station and values
-Mobile_sync_df = pd.DataFrame(Mobile_sync_table)
-plt.figure
+Mobile_sync_df = DataFrame(Mobile_sync_table)
+plt.figure()
 # Plot mobile measurements values
 ax = Mobile_sync_df.plot(["Tair", "Tairsync", "RH, RHsync", "tg"])
 # plot reference values
 data_fixe_upsampled.plot(["T_air", "NetRad", "RH", "Tg"], ax=ax)
-
