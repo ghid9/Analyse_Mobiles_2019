@@ -181,21 +181,21 @@ def dateparse(x):
 
 
 # Mean radiant temperature calculation
-def Tmrt_ISO(Tg, va, epsilon, Diameter, Ta):
+def Tmrt_ISO(Tglobe, va, epsilon, Diameter, Ta):
     """ISO 7726
     We do not apply a correction to air temperature while computing Tmrt
 Va: wind speed at 1,5 meter height
-Tg:globe temperature
+Tglobe:globe temperature
 epsilon: emissivity (  0.95 for the globe )
 Diameter: black globe diameter
 Ta: air temperature
 """
-    A = (Tg + 273.15) ** 4
+    A = (Tglobe + 273.15) ** 4
     B = (1.1 * 10 ** 8) * va ** 0.6
     C = epsilon * Diameter ** 0.4
-    D = (Tg - Ta)
-    Tmrt = ((A + (B / C) * D) ** 0.25) - 273.15
-    return Tmrt
+    D = (Tglobe - Ta)
+    Tmrt_iso = ((A + (B / C) * D) ** 0.25) - 273.15
+    return Tmrt_iso
 
 
 # Black Globe Data
@@ -220,25 +220,25 @@ def pression_vap_sat(Ta):
     return es
 
 
-def utci(Tg, Ta, va, RH, h):
+def utci(T_globe, Ta, va, ReH, h):
     """
     Utci: fast calculation computation
-    Tg:  globe temperature
+    Tglobe:  globe temperature
     Ta: air temperature
     va: wind speed
-    RH: relative humidity
+    ReH: relative humidity
     h: height at which wind speed measurement was maid
     """
     # Adjusted wind speed
     h_factor = np.log10(10 / 0.01) / np.log10(h / 0.01)
     va_10m = va * h_factor
     # Mean radiant temperature with black globe
-    TMRT = Tmrt_ISO(Tg, va, emissivity_globe, Diametre_globe, Ta)
+    TMRT = Tmrt_ISO(T_globe, va, emissivity_globe, Diametre_globe, Ta)
     D_Tmrt = TMRT - Ta
     # Water Vapour Pressure
     es = pression_vap_sat(Ta)
-    RH = RH / 100
-    ehPa = RH * es
+    ReH = ReH / 100
+    ehPa = ReH * es
     # Compute UTCI
     utci_calc = utci_raw(Ta, va_10m, D_Tmrt, ehPa)
     utci_final = round(utci_calc, 1)
@@ -294,78 +294,89 @@ print('Veuillez entrer Le nom de la cour')
 ecole = input()
 print("le nom de la cours est : " + str(ecole))
 
-# GENERATE TABLE CONTAINING VALUES AVERAGED ON LAST 5 MINUTES OF THE MEASUREMENT
+# GENERATE TABLE CONTAINING VALUES AVERAGED OVER THE LAST 5 MINUTES OF THE MEASUREMENT
 
 # UTCI TABLE FORMAT FOR MOBILE MEASUREMENTS
-UTCI_TABLE = {"Ecole": [],
-      "Point": [],
-      "Taircor": [],
-      "Tg": [],
-      "RH": [],
-      "RHcor": [],
-      "Tair": [],
-      "Va": [],
-      "vapSat": [],
-      "Tmrt": [],
-      "UTCI": [],
-      }
-
-UTCI_Df= pd.DataFrame(UTCI_TABLE)
 
 # MEASUREMENTS LOOP
 
 liste = os.listdir(dict_path_oasis['Palviset'])
 i = 0
+
+# CREATE A UTCI DATAFRAME
+Header_values = ["ecole", str(i + 1), "Tairsync", "Tair", "RHsync", "RH",
+                 "Tg", "wind_speed", "vap_pressure_sync", "vap_pressure", "Utci_Ta_adjusted", "Utci_Ta_RH_adjusted"]
+Mobile_sync_table = []
+Point_value = []
 while i < len(liste) - 1:
-    data_m = pd.read_csv(dict_path_oasis['Palviset'] + '//' + liste[i], sep=";", usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-                         header=None, skiprows=1, date_parser=dateparse)
-    data_point = data_m.dropna() #remove no data
+    data_point = pd.read_csv(dict_path_oasis['Palviset'] + '//' + liste[i], sep=";",
+                             usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                             header=None, skiprows=1, date_parser=dateparse)
+    # data_point = data_m.dropna()  # remove no data
     data_point.columns = ["DateTime", "Tnw", "Tg", "T_air", "P", "RH", "Vent", "Tm,r ", "WBGT", "WCI"]
 
     # Synchronise start of measurements for mobile and fixed spots
-    data_point['DateTime'] = pd.to_datetime( data_point['DateTime'])
-    data_point['NDateTime'] = data_point['DateTime'] + timedelta(seconds=-data_point['DateTime'][0].second)
+    data_point['DateTime'] = pd.to_datetime(data_point['DateTime'])
+    data_point['NewDateTime'] = data_point['DateTime'] + timedelta(seconds=-data_point['DateTime'][0].second)
     data_sync = data_point.drop(['Tnw', 'WBGT', 'WCI'], axis=1)
-    Data_sync= data_point.set_index('NDateTime')  # set datetime as index
+    Data_sync = data_point.set_index('NewDateTime')  # set datetime as index
 
-    #Place the Fixed and  mobile DataFrames side by side
+    # Place the Fixed and  mobile DataFrames side by side
     # Sync_Table: table for synchronizing measurements
-    TabCor = pd.concat([Correction, Data_sync], axis=1)
-    TabCor.dropna()
-    # Ceate a synchronised mobile measurements dataframe
-    Mobile_sync= TabCor.assign(Tcor_air=TabCor.T_air + TabCor.D_Tair, RHcor=TabCor.RH + TAC.RH)
-    #Compute the averaged Values
+    TabCor = pd.concat([Correction, Data_sync], axis=1, join='inner')
+    # TabCor.dropna()
+    # Create a synchronised mobile measurements dataframe
+    "here we substract the Delta_temp and delta RH to values : we synchronize all the points with the start point measurement"
+    Mobile_sync = TabCor.assign(Tcor_air=TabCor.T_air - TabCor.D_Tair, RHcor=TabCor.RH - TabCor.RH)
+    Mobile_sync_table.append(Mobile_sync)
+    # Compute the averaged Values : arithmetic mean
+    "here we average over the last five minutes of the measurement  so that the value is stabilized "
+    # Adjusted Air temperature
     Tairsync = Mobile_sync.Tcor_air.tail(21).mean()
+    # Air Temperature: no correction
+    Tair = Mobile_sync.T_air.tail(21).mean()
+    # Globe temperature : no correction
     Tg = Mobile_sync.Tg.tail(21).mean()
+    # Relative Humidity : no correction
     RH = Mobile_sync.RH.tail(21).mean()
-    RHsync = MC.RH.tail(21).mean()
-    Tair = MC.T_air.tail(21).mean()
-    wind_speed = MC.Vent.tail(21).mean()
-    Tmrt= Tmrt_ISO(Tg, wind_speed, emissivity_globe, Diametre_globe, Tair)
-    vap_pressure= pression_vap_sat(Tairsync)
-    UUtci = utci(TgMoy, TcorAirMoy, vitv, RHcorMoy)
-    PU.append([ecole, i, TcorAirMoy, TgMoy, RHcorMoy, RHMoy, T_airMoy, vitv, UVapsat, UTmrt, UUtci])
+    # Adjusted Relative Humidity
+    RHsync = Mobile_sync.RH.tail(21).mean()
+    # wind speed : no correction
+    wind_speed = Mobile_sync.Vent.tail(21).mean()
+    # mean radiant temperature : computed with raw temperatures
+    Tmrt = Tmrt_ISO(Tg, wind_speed, emissivity_globe, Diametre_globe, Tair)
+    # Adjusted equilibrium Vapour pressure
+    vap_pressure_sync = pression_vap_sat(Tairsync)
+    # Equilibrium Vapour pressure : no correction
+    vap_pressure = pression_vap_sat(Tair)
+
+    # UTCI COMPUTATION
+    Utci_Ta_adjusted = utci(Tg, Tairsync, wind_speed, RH, 1.5)
+    Utci_Ta_RH_adjusted = utci(Tg, Tairsync, wind_speed, RHsync, 1.5)
+    Point_value.append(
+        [ecole, i, Tairsync, Tair, RHsync, RH, Tg, wind_speed, vap_pressure_sync, vap_pressure, Utci_Ta_adjusted,
+         Utci_Ta_RH_adjusted])
 
     print("point" + " " + str(i + 1) + " " + "OK")
     i = i + 1
 
-"""Tableau UTCI pour les points de chaque balade dans chaque école"""
-# Add to dataframe les lignes relatives à chaque point
+# %% Add to dataframe lines related to points
 
-DPU = pd.DataFrame(PU, columns=TU)
-DU = DU.append(DPU)
+UTCI_dataframe = pd.DataFrame(Point_value, columns=Header_values)
 
-"""CONSIGNER LES VALEURS"""
+# Write values
 outfile = open(dict_path['Palviset'] + '/Palviset_UTCI.csv', 'w')
-DU.to_csv(outfile, sep=';', index=False)
+UTCI_dataframe.to_csv(outfile, sep=';', index=False)
 outfile.close()
 print("valeurs Consignées")
 
 """Graphe pour visualiser la station fixe, les mesures mobiles et les mesures mobiles corrigées"""
 
-# MULTIPLE PLOTS SAME FIGURE
-# plt.plot(SwDown18, SwUp18, "o", label='Station Fixe')
-# plt.plot(SwDown19, SwUp19, "o",label='Après travaux ')
-# plt.legend(loc='best')
-# plt.title("Evolution de l'albédo= Rayon réfléchi/Rayon incident")
-# plt.show()
+# %% MULTIPLE PLOTS SAME FIGURE: Reference station and values
+Mobile_sync_df = pd.DataFrame(Mobile_sync_table)
+plt.figure
+# Plot mobile measurements values
+ax = Mobile_sync_df.plot(["Tair", "Tairsync", "RH, RHsync", "tg"])
+# plot reference values
+data_fixe_upsampled.plot(["T_air", "NetRad", "RH", "Tg"], ax=ax)
+
