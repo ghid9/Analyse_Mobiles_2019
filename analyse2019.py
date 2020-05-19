@@ -174,11 +174,18 @@ def utci_raw(Ta, va, D_Tmrt, ehPa):
     return utci_polynomial
 
 
-def dateparse(x):
+def dateparse_Y(x):
     """dateparse function
-    applies the crrect format to imported data
+    applies the correct format to imported data
     """
     return datetime.strptime(x, '%Y-%m-%d %H:%M:%S')
+
+
+def dateparse_y(x):
+    """dateparse function
+    applies the correct format to imported data
+    """
+    return datetime.strptime(x, '%y-%m-%d %H:%M:%S')
 
 
 # Mean radiant temperature calculation
@@ -265,7 +272,7 @@ Lecoles = list(dict_path_oasis.keys())
 liste = os.listdir(dict_path_oasis['Palviset'])
 data_fixe = read_csv(dict_path_oasis['Palviset'] + "\\PalvisetEP.txt",
                      usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8],
-                     sep=";", date_parser=dateparse, skiprows=4,
+                     sep=";", date_parser=dateparse_y, skiprows=4,
                      names=['DateTime', 'TensAlim', 'Tair4m', 'RH', 'T_air', 'NetRad', 'Tg', 'va', 'DirV'])
 
 # DATETIME FOR UPSAMPLING
@@ -291,9 +298,9 @@ Correction = data_fixe_upsampled[['D_Tair', 'D_RH']]
 
 # %% MOBILE MEASUREMENTS
 # choose measurements site
-print('Veuillez entrer Le nom de la cour')
-ecole = input()
-print("le nom de la cours est : " + str(ecole))
+# print('Veuillez entrer Le nom de la cour')
+# ecole = input()
+# print("le nom de la cours est : " + str(ecole))
 
 # GENERATE TABLE CONTAINING VALUES AVERAGED OVER THE LAST 5 MINUTES OF THE MEASUREMENT
 
@@ -303,16 +310,16 @@ print("le nom de la cours est : " + str(ecole))
 
 liste = os.listdir(dict_path_oasis['Palviset'])
 i = 0
-
+ecole = 'Palviset'
 # CREATE A UTCI DATAFRAME
 Header_values = ["ecole", str(i + 1), "Tairsync", "Tair", "RHsync", "RH",
                  "Tg", "wind_speed", "vap_pressure_sync", "vap_pressure", "Utci_Ta_adjusted", "Utci_Ta_RH_adjusted"]
 Mobile_sync_table = []
 Point_value = []
-while i < len(liste) - 1:
+while i < len(liste)-1 :
     data_point = read_csv(dict_path_oasis['Palviset'] + '//' + liste[i], sep=";",
                           usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-                          header=None, skiprows=1, date_parser=dateparse)
+                          header=None, skiprows=1, date_parser=dateparse_Y)
     # data_point = data_m.dropna()  # remove no data
     data_point.columns = ["DateTime", "Tnw", "Tg", "T_air", "P", "RH", "Vent", "Tm,r ", "WBGT", "WCI"]
 
@@ -327,7 +334,8 @@ while i < len(liste) - 1:
     TabCor = concat([Correction, Data_sync], axis=1, join='inner')
     # TabCor.dropna()
     # Create a synchronised mobile measurements dataframe
-    "here we substract the Delta_temp and delta RH to values : we synchronize all the points with the start point measurement"
+    'here we substract the Delta_temp and delta RH to values ' \
+    'we synchronize all the points with the start point measurement'
     Mobile_sync = TabCor.assign(Tcor_air=TabCor.T_air - TabCor.D_Tair, RHcor=TabCor.RH - TabCor.RH)
     Mobile_sync_table.append(Mobile_sync)
     # Compute the averaged Values : arithmetic mean
@@ -377,6 +385,7 @@ print("valeurs Consignées")
 Mobile_sync_df = DataFrame(Mobile_sync_table)
 plt.figure()
 # Plot mobile measurements values
-ax = Mobile_sync_df.plot(["Tair", "Tairsync", "RH, RHsync", "tg"])
+ax = Mobile_sync_df[["Tair", "Tairsync", "RH, RHsync", "Tg"]].plot()
 # plot reference values
-data_fixe_upsampled.plot(["T_air", "NetRad", "RH", "Tg"], ax=ax)
+data_fixe_upsampled[["T_air", "NetRad", "RH", "Tg"]].plot(ax=ax)
+plt.show()
